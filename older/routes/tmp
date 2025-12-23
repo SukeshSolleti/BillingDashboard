@@ -1,0 +1,73 @@
+from the above schemas I would like to do the following operations I am still confused how to achieve it first i will add a new customer and then using bills i will make a bill and that bill id will be stored in customer.bills array and if any payment made to the bill should be stored in bills.payment how to build api for this and also in bills balance amount is equal to totalamount when payment is made it should be substracted in bill.balanceamount and also customer.totaldueamount when a new bill is created we should update by adding it to customer.totaltransactionamount
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const { Customer, Bill, Payment } = require('./models');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(bodyParser.json());
+
+// Connect to MongoDB
+mongoose.connect('mongodb://localhost:27017/your_database_name', { useNewUrlParser: true, useUnifiedTopology: true });
+
+// Routes
+app.post('/customers', async (req, res) => {
+try {
+const { name, phoneNo, city } = req.body;
+const customer = new Customer({ name, phoneNo, city });
+await customer.save();
+res.json(customer);
+} catch (error) {
+res.status(500).json({ error: error.message });
+}
+});
+
+app.post('/customers/:customerId/bills', async (req, res) => {
+try {
+const customerId = req.params.customerId;
+const { stocks, totalAmount } = req.body;
+const bill = new Bill({ stocks, totalAmount, balanceAmount: totalAmount });
+await bill.save();
+
+        // Update customer's total transaction amount
+        await Customer.findByIdAndUpdate(customerId, { $inc: { totalTransactionAmount: totalAmount } });
+
+        // Add bill to customer's bills array
+        await Customer.findByIdAndUpdate(customerId, { $push: { bills: bill._id } });
+
+        res.json(bill);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+
+});
+
+app.post('/bills/:billId/payments', async (req, res) => {
+try {
+const billId = req.params.billId;
+const { amountPaid } = req.body;
+
+        // Update bill's balance amount
+        const bill = await Bill.findByIdAndUpdate(billId, { $inc: { balanceAmount: -amountPaid } }, { new: true });
+
+        // Update customer's total due amount
+        await Customer.findOneAndUpdate({ bills: billId }, { $inc: { totalDueAmount: -amountPaid } });
+
+        // Add payment to bill's payments array
+        const payment = new Payment({ amountPaid });
+        await Bill.findByIdAndUpdate(billId, { $push: { payments: payment } });
+
+        res.json(payment);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+
+});
+
+// Start the server
+app.listen(PORT, () => {
+console.log(`Server is running on http://localhost:${PORT}`);
+});
